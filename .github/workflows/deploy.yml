@@ -1,0 +1,70 @@
+name: Deploy to LiquidGecko
+
+# Build the info-webapp and publish the built site to the orphan `deploy` branch.
+# A puller on the LiquidGecko host fetches `deploy` and swaps the docroot.
+# This workflow never runs on the `deploy` branch itself.
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Serialise deploys so two pushes never race to force-push the deploy branch.
+concurrency:
+  group: deploy-branch
+  cancel-in-progress: false
+
+jobs:
+  build_and_publish:
+    runs-on: ubuntu-latest
+    name: Build and publish to deploy branch
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: info-webapp/package-lock.json
+
+      - name: Install dependencies
+        working-directory: info-webapp
+        run: npm ci
+
+      - name: Build
+        working-directory: info-webapp
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.svr-racing.com/' }}
+          VITE_IDENTITY_URL: ${{ vars.VITE_IDENTITY_URL || 'https://identity.svr-racing.com/' }}
+        run: npm run build
+
+      - name: Write BUILD_INFO
+        run: |
+          {
+            echo "source=${GITHUB_SHA}"
+            echo "run=${GITHUB_RUN_ID}"
+            echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > info-webapp/dist/BUILD_INFO
+          cat info-webapp/dist/BUILD_INFO
+
+      - name: Publish dist to deploy branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short "${GITHUB_SHA}")"
+          SUBJECT="$(git log -1 --pretty=%s "${GITHUB_SHA}")"
+          cd info-webapp/dist
+          git init -b deploy
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "deploy ${SHORT_SHA}: ${SUBJECT}"
+          git push --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+            deploy:refs/heads/deploy

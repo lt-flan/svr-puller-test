@@ -1,6 +1,6 @@
 name: Deploy to LiquidGecko
 
-# Build the info-webapp and publish the built site to the orphan `deploy` branch.
+# Build the race-dashboard and publish the built site to the orphan `deploy` branch.
 # A puller on the LiquidGecko host fetches `deploy` and swaps the docroot.
 # This workflow never runs on the `deploy` branch itself.
 on:
@@ -30,27 +30,26 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: info-webapp/package-lock.json
+          cache-dependency-path: dashboard/race-dashboard/package-lock.json
 
       - name: Install dependencies
-        working-directory: info-webapp
+        working-directory: dashboard/race-dashboard
         run: npm ci
 
       - name: Build
-        working-directory: info-webapp
+        working-directory: dashboard/race-dashboard
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.svr-racing.com/' }}
-          VITE_IDENTITY_URL: ${{ vars.VITE_IDENTITY_URL || 'https://identity.svr-racing.com/' }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://hector-api.svr-racing.com/' }}
         run: npm run build
 
       - name: Write BUILD_INFO
         run: |
           {
-            echo "source=${GITHUB_SHA}"
-            echo "run=${GITHUB_RUN_ID}"
+            echo "sha=${GITHUB_SHA}"
             echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > info-webapp/dist/BUILD_INFO
-          cat info-webapp/dist/BUILD_INFO
+            echo "branch=${GITHUB_REF_NAME}"
+          } > dashboard/race-dashboard/dist/BUILD_INFO
+          cat dashboard/race-dashboard/dist/BUILD_INFO
 
       - name: Publish dist to deploy branch
         env:
@@ -59,7 +58,7 @@ jobs:
           set -euo pipefail
           SHORT_SHA="$(git rev-parse --short "${GITHUB_SHA}")"
           SUBJECT="$(git log -1 --pretty=%s "${GITHUB_SHA}")"
-          cd info-webapp/dist
+          cd dashboard/race-dashboard/dist
           git init -b deploy
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
